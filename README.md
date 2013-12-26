@@ -20,4 +20,5 @@ The first entry is the time, in milliseconds since the start of recording.
 The second is the data written, JSON escaped.
 
 Copyright (c) 2014 Dave Thomas, The Pragmatic Programmers
-LicensedSee LICENSE.txt for the license (hint: it's MIT)
+
+See LICENSE.txt for the license (hint: it's MIT)

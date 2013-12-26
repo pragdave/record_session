@@ -1,11 +1,14 @@
 require "optparse"
 require "pty"
+require "json"
 
 class RecordSession
 
+  UTF = Encoding.find "utf-8"
+
   def initialize(argv = ARGV)
     parse_options(argv)
-    @outfile = File.open(@outfile_name, "wb:binary")
+    @outfile = File.open(@outfile_name, "w:utf-8")
     @outfile.syswrite("session = {\nsize: #{terminal_size.inspect},\n")
     @outfile.syswrite("data: [\n")
   end
@@ -92,7 +95,7 @@ class RecordSession
   def handle_output(master)
     STDOUT.sync = true
     loop do
-      data = master.sysread(1000)
+      data = master.sysread(1000).force_encoding(UTF)
       STDOUT.write(data)
       log_data(data)
     end
@@ -103,22 +106,14 @@ class RecordSession
   end
 
   def log_data(data)
-    @outfile.syswrite(%{[#{timestamp - @start_time},"#{escape(data)}"]\n})
+    @outfile.syswrite(JSON.generate([timestamp - @start_time, data]))
+    @outfile.syswrite("\n")
   end
 
   def timestamp
     (Time.now.to_r * 1000).to_i
   end
   
-  def escape(data)
-    data
-    .gsub(/\\/, '\\\\\\\\')
-    .gsub(/"/, '\\\\"')
-    .gsub(/\r/, '\\r')
-    .gsub(/\n/, '\\n')
-    .gsub(/\010/, '\\b')
-    .gsub(/\e/, '\\u001b')
-  end
 
   # From Gabriel Horner  (cldwalker)
   def terminal_size

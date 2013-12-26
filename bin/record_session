@@ -1,0 +1,5 @@
+#!/bin/env ruby
+
+require 'record_session'
+r = RecordSession.new
+r.record

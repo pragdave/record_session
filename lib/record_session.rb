@@ -8,9 +8,6 @@ class RecordSession
 
   def initialize(argv = ARGV)
     parse_options(argv)
-    @outfile = File.open(@outfile_name, "w:utf-8")
-    @outfile.syswrite("session = {\nsize: #{terminal_size.inspect},\n")
-    @outfile.syswrite("data: [\n")
   end
 
   def parse_options(argv)
@@ -39,9 +36,7 @@ class RecordSession
 #      Process.daemon
       output_pid = fork do
         Signal.trap("CHLD") do
-          @outfile.syswrite "]}\n"
-          @outfile.close
-          exit
+          master.close
         end
         fork do
           master.close
@@ -72,7 +67,6 @@ class RecordSession
   def handle_shell(slave)
     shell = ENV["SHELL"] || "/bin/sh"
     
-    @outfile.close
     STDIN.reopen(slave)
     STDOUT.reopen(slave)
     STDERR.reopen(slave)
@@ -81,7 +75,6 @@ class RecordSession
   end
 
   def handle_input(master)
-    @outfile.close
     loop do
       data = STDIN.sysread(1000)
       master.syswrite(data)
@@ -94,15 +87,24 @@ class RecordSession
 
   def handle_output(master)
     STDOUT.sync = true
-    loop do
-      data = master.sysread(1000).force_encoding(UTF)
-      STDOUT.write(data)
-      log_data(data)
+    result = { size: terminal_size }
+    output_chars = []
+
+    begin
+      while data = master.sysread(1000)
+        data.force_encoding(UTF)
+        STDOUT.write(data)
+        output_chars << [ timestamp - @start_time, data ]
+      end
+    rescue EOFError, Errno::EBADF
+      result[:data] = output_chars
+      File.open(@outfile_name, "w:utf-8") do |op|
+        op.puts("session = ")
+        op.puts(JSON.generate(result))
+      end
+    rescue Exception => e
+      STDERR.puts e.inspect
     end
-  rescue SystemCallError 
-    raise
-  rescue EOFError
-    @outfile.close
   end
 
   def log_data(data)

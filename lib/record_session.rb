@@ -30,7 +30,7 @@ class RecordSession
   end
 
   def record
-    @start_time = timestamp
+    @last_time = timestamp
     master, slave = PTY.open
     setup_tty do
 #      Process.daemon
@@ -71,7 +71,11 @@ class RecordSession
     STDOUT.reopen(slave)
     STDERR.reopen(slave)
     slave.close
-    exec(shell, "-i")
+    opts = ["-i "]
+    if shell =~ /zsh/
+      opts << "+o" << "prompt_sp"
+    end
+    exec(shell, *opts)
   end
 
   def handle_input(master)
@@ -94,13 +98,16 @@ class RecordSession
       while data = master.sysread(1000)
         data.force_encoding(UTF)
         STDOUT.write(data)
-        output_chars << [ timestamp - @start_time, data ]
+        time = timestamp
+        output_chars << [ time - @last_time, data ]
+        @last_time = time
       end
     rescue EOFError, Errno::EBADF
       result[:data] = output_chars
       File.open(@outfile_name, "w:utf-8") do |op|
-        op.puts("session = ")
+        op.puts("the_recording_data(")
         op.puts(JSON.generate(result))
+        op.puts(")")
       end
     rescue Exception => e
       STDERR.puts e.inspect

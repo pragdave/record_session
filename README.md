@@ -16,7 +16,7 @@ The output file is structured as a JSON object.
 The first entry is the size of the window of the captured session.
 
 This is followed by a list of the data that was written to the terminal.
-The first entry is the time, in milliseconds since the start of recording.
+The first entry is the time in milliseconds since the previous event.
 The second is the data written, JSON escaped.
 
 Copyright (c) 2014 Dave Thomas, The Pragmatic Programmers

@@ -1,6 +1,14 @@
 require "optparse"
 require "pty"
 require "json"
+require 'termios'
+
+LFLAG_MASK = ~(Termios::ISIG   |
+               Termios::ICANON |
+               Termios::ECHO   |
+               Termios::ECHOE  |
+               Termios::ECHOK  |
+               Termios::ECHONL) 
 
 class RecordSession
 
@@ -32,8 +40,9 @@ class RecordSession
   def record
     @last_time = timestamp
     master, slave = PTY.open
-    setup_tty do
+    setup_tty(slave) do
 #      Process.daemon
+
       output_pid = fork do
         Signal.trap("CHLD") do
           master.close
@@ -54,13 +63,28 @@ class RecordSession
     puts "Session recorded to #@outfile_name"
   end
 
-  def setup_tty
-    save_state = %x{stty -g}
-    %x{stty raw}
+  def setup_tty(slave)
+    
+    save_state = Termios.tcgetattr(STDIN)
+    Termios.tcsetattr(slave, Termios::TCSAFLUSH, save_state)
+
+    new_state = save_state.clone
+
+    new_state.iflag = 0
+    new_state.lflag &= LFLAG_MASK
+    new_state.oflag = Termios::OPOST
+    new_state.cc[Termios::VINTR]  =
+    new_state.cc[Termios::VQUIT]  =
+    new_state.cc[Termios::VERASE] =
+    new_state.cc[Termios::VKILL]  = Termios::POSIX_VDISABLE
+    new_state.cc[Termios::VEOF]   = 1
+    new_state.cc[Termios::VEOL]   = 0
+    Termios::tcsetattr(STDIN, Termios::TCSAFLUSH, new_state)
+
     begin
-      yield
+      yield save_state
     ensure
-      %x{stty "#{save_state}"}
+      Termios.tcsetattr(STDIN, Termios::TCSAFLUSH, save_state)
     end
   end
     
@@ -71,7 +95,10 @@ class RecordSession
     STDOUT.reopen(slave)
     STDERR.reopen(slave)
     slave.close
-    opts = ["-i "]
+
+    IO.console.winsize = terminal_size
+
+    opts = ["-i"]
     if shell =~ /zsh/
       opts << "+o" << "prompt_sp"
     end
@@ -124,19 +151,10 @@ class RecordSession
   end
   
 
-  # From Gabriel Horner  (cldwalker)
   def terminal_size
-    if (ENV['COLUMNS'] =~ /^\d+$/) && (ENV['LINES'] =~ /^\d+$/)
-      return [ENV['COLUMNS'].to_i, ENV['LINES'].to_i]
-    elsif (RUBY_PLATFORM =~ /java/ || (!STDIN.tty? && ENV['TERM'])) && command_exists?('tput')
-      [`tput cols`.to_i, `tput lines`.to_i]
-    elsif STDIN.tty? && command_exists?('stty')
-      `stty size`.scan(/\d+/).map { |s| s.to_i }.reverse
-    else
-      nil
-    end
+    IO.console.winsize
   rescue
-    nil
+    [80, 25]
   end
 
   def display_help_and_exit

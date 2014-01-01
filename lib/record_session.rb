@@ -5,10 +5,20 @@ require 'termios'
 
 LFLAG_MASK = ~(Termios::ISIG   |
                Termios::ICANON |
+               Termios::IEXTEN |
                Termios::ECHO   |
                Termios::ECHOE  |
                Termios::ECHOK  |
                Termios::ECHONL) 
+
+IFLAG_MASK = ~(Termios::IGNBRK | 
+               Termios::BRKINT | 
+               Termios::PARMRK | 
+               Termios::ISTRIP | 
+               Termios::INLCR  | 
+               Termios::IGNCR  |
+               Termios::ICRNL  |
+               Termios::IXON)
 
 class RecordSession
 
@@ -41,19 +51,23 @@ class RecordSession
     @last_time = timestamp
     master, slave = PTY.open
     setup_tty(slave) do
-#      Process.daemon
-
       output_pid = fork do
         Signal.trap("CHLD") do
           master.close
         end
         fork do
           master.close
+          Process.setsid
+          slave.ioctl(536900705, 0)
+
           handle_shell(slave)
         end
+        STDIN.close
+        slave.close
         handle_output(master)
       end
       input_pid = fork do 
+        slave.close
         handle_input(master)
       end
       Process.wait(output_pid)
@@ -64,15 +78,16 @@ class RecordSession
   end
 
   def setup_tty(slave)
-    
     save_state = Termios.tcgetattr(STDIN)
     Termios.tcsetattr(slave, Termios::TCSAFLUSH, save_state)
 
     new_state = save_state.clone
 
-    new_state.iflag = 0
+    new_state.iflag &= 0#IFLAG_MASK
     new_state.lflag &= LFLAG_MASK
     new_state.oflag = Termios::OPOST
+    new_state.cflag &= ~(Termios::CSIZE || Termios::PARENB)
+    new_state.cflag |= Termios::CS8
     new_state.cc[Termios::VINTR]  =
     new_state.cc[Termios::VQUIT]  =
     new_state.cc[Termios::VERASE] =
@@ -89,16 +104,13 @@ class RecordSession
   end
     
   def handle_shell(slave)
-    shell = ENV["SHELL"] || "/bin/sh"
-    
     STDIN.reopen(slave)
     STDOUT.reopen(slave)
     STDERR.reopen(slave)
     slave.close
 
-    IO.console.winsize = terminal_size
-
-    opts = ["-i"]
+    shell = ENV["SHELL"] || "/bin/sh"
+    opts = ["-i" ]
     if shell =~ /zsh/
       opts << "+o" << "prompt_sp"
     end
@@ -106,6 +118,7 @@ class RecordSession
   end
 
   def handle_input(master)
+    master.syswrite("tput clear\n")
     loop do
       data = STDIN.sysread(1000)
       master.syswrite(data)
@@ -122,7 +135,8 @@ class RecordSession
     output_chars = []
 
     begin
-      while data = master.sysread(1000)
+      loop do
+        data = master.sysread(1000)
         data.force_encoding(UTF)
         STDOUT.write(data)
         time = timestamp

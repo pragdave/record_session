@@ -129,10 +129,33 @@ class RecordSession
     # exit
   end
 
+  class Result
+    def initialize(terminal_size)
+      @stream = []
+      @result = { size: terminal_size, stream: @stream }
+    end
+
+    def add_output(delay, chars)
+      if delay <= 0 && @stream.size > 0
+        @stream.last[:op] << chars
+      else
+        @stream << { d: delay, op: chars }
+      end
+    end
+
+    def write(outfile_name)
+      File.open(outfile_name, "w:utf-8") do |op|
+        op.puts("the_recording_data(")
+        op.puts(JSON.generate(@result))
+        op.puts(")")
+      end
+    end
+
+  end
+
   def handle_output(master)
     STDOUT.sync = true
-    result = { size: terminal_size }
-    output_chars = []
+    result = Result.new(terminal_size)
 
     begin
       loop do
@@ -140,20 +163,16 @@ class RecordSession
         data.force_encoding(UTF)
         STDOUT.write(data)
         time = timestamp
-        output_chars << [ time - @last_time, data ]
+        result.add_output(time - @last_time, data)
         @last_time = time
       end
     rescue EOFError, Errno::EBADF
-      result[:data] = output_chars
-      File.open(@outfile_name, "w:utf-8") do |op|
-        op.puts("the_recording_data(")
-        op.puts(JSON.generate(result))
-        op.puts(")")
-      end
+      result.write(@outfile_name)
     rescue Exception => e
       STDERR.puts e.inspect
     end
   end
+
 
   def log_data(data)
     @outfile.syswrite(JSON.generate([timestamp - @start_time, data]))

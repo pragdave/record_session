@@ -137,9 +137,9 @@ class RecordSession
 
     def add_output(delay, chars)
       if delay <= 0 && @stream.size > 0
-        @stream.last[:op] << chars
+        @stream.last[:val] << chars
       else
-        @stream << { t: "op", d: delay, op: chars }
+        @stream << { t: "op", d: delay, val: chars }
       end
     end
 

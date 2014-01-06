@@ -139,7 +139,7 @@ class RecordSession
       if delay <= 0 && @stream.size > 0
         @stream.last[:op] << chars
       else
-        @stream << { d: delay, op: chars }
+        @stream << { t: "op", d: delay, op: chars }
       end
     end
 

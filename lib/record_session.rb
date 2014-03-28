@@ -114,11 +114,11 @@ class RecordSession
     if shell =~ /zsh/
       opts << "+o" << "prompt_sp"
     end
+    ENV["RECORDING"] = "YES"
     exec(shell, *opts)
   end
 
   def handle_input(master)
-    master.syswrite("tput clear\n")
     loop do
       data = STDIN.sysread(1000)
       master.syswrite(data)
@@ -145,9 +145,7 @@ class RecordSession
 
     def write(outfile_name)
       File.open(outfile_name, "w:utf-8") do |op|
-        op.puts("the_recording_data(")
-        op.puts(JSON.generate(@result))
-        op.puts(")")
+        op.puts("the_recording_data(#{JSON.generate(@result)})")
       end
     end
 
@@ -185,9 +183,10 @@ class RecordSession
   
 
   def terminal_size
-    IO.console.winsize
+    lines, columns = IO.console.winsize
+    { lines: lines, columns: columns }
   rescue
-    [80, 25]
+    {lines: 25, columns: 80}
   end
 
   def display_help_and_exit

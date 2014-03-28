@@ -1,3 +1,3 @@
-module RecordSession
-  VERSION = "0.0.1"
+class RecordSession
+  VERSION = "0.0.2"
 end
